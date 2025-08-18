@@ -15,7 +15,7 @@ A Streamlit app to evaluate TTS audio. Users enter a name, rate audio (1–100, 
 2. cd tts-eval-ui
 3. sh setup.sh        # enter Conda env name when prompted
 4. conda activate <env_name>
-5. mkdir -p audios    # add .wav files here
+5. add audio recordings in audios directory  
 6. streamlit run app.py
 ```
 
