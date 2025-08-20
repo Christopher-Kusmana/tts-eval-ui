@@ -257,13 +257,19 @@ def main():
             key='score_visual_slider_key'
         )
         
+        is_current_audio_unscored = (st.session_state.scores.get(current_audio_path) == -1)
+
         # NAV BUTTONS AND SAVE
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
             if st.button('⬅️ Previous', on_click=prev_audio, disabled=(st.session_state.audio_index == 0)):
                 pass
         with col2:
-            if st.button('Next ➡️', on_click=next_audio, disabled=(st.session_state.audio_index == len(st.session_state.audio_files) - 1)):
+            if st.button(
+                'Next ➡️', 
+                on_click=next_audio, 
+                disabled=(st.session_state.audio_index == len(st.session_state.audio_files) - 1) or is_current_audio_unscored
+            ):
                 pass
         with col3:
             st.button('💾 Save All Scores to Log', on_click=log_all_evaluations)
