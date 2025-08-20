@@ -4,9 +4,9 @@ import os
 import glob
 
 # CONFIG
-CSV_INPUT = "app_input/csv/list.csv"
+CSV_INPUT = "app_input/csv/single_eval_list.csv"
 LOG_DIR = 'app_output'
-LOG_FILE = os.path.join(LOG_DIR, 'eval_log.csv')
+LOG_FILE = os.path.join(LOG_DIR, 'single_eval_log.csv')
 AUDIO_DIR = 'app_input/audios' # Stored audio dir
 
 # STATES
@@ -213,7 +213,7 @@ def main():
         st.markdown("---")
 
         if not st.session_state.audio_files:
-            st.warning("No audio entries found. Please check 'app_input/csv/list.csv' and the 'audios' directory.")
+            st.warning("No audio entries found. Please check 'app_input/csv/single_eval_list.csv' and the 'audios' directory.")
             return
 
         # Fetch the current audio entry once at the beginning
@@ -285,7 +285,7 @@ def main():
             st.info("No scores recorded yet in this session.")
 
         st.markdown("---")
-        st.info("Your scores are logged to 'logs/eval_log.csv'. **Only scores not equal to -1 will be saved.**")
+        st.info("Your scores are logged to 'logs/single_eval_log.csv'. **Only scores not equal to -1 will be saved.**")
     
 if __name__ == '__main__':
     main()
