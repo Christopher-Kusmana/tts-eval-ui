@@ -115,31 +115,24 @@ def _save_score_from_input():
     st.session_state.scores[current_audio_path] = st.session_state.score_text_input_key
 
 def log_all_evaluations():
-    """Logs all current evaluations for the user to the CSV file, overwriting previous entries for this user."""
+    """Logs all new evaluations for the user to the CSV file, appending new entries."""
     user = st.session_state.user_name
 
     if user:
-        # Load existing logs from the CSV file
-        if os.path.exists(LOG_FILE):
-            df_log = pd.read_csv(LOG_FILE)
-        else:
-            # Ensure all columns are defined when creating a new DataFrame
-            df_log = pd.DataFrame(columns=['user_name', 'audio_file', 'transcriptions', 'score', 'model_name', 'model_ver'])
+        # Create a list to store new log entries for the current session
+        new_log_entries = []
 
-        # Filter out existing entries for the current user to prepare for update
-        df_other_users = df_log[df_log['user_name'] != user]
-
-        # Create new entries for the current user based on current session_state.scores
-        new_user_scores = []
+        # Find which audio files have new scores to log
         for audio_file_path, score_val in st.session_state.scores.items():
-            if score_val != -1: # Only log if a score has been set (not -1)
+            # Only log if a score has been set and it's not the default unscored value
+            if score_val != -1:
                 # Find the corresponding audio entry from the loaded list
                 audio_entry = next((entry for entry in st.session_state.audio_files if entry['audio_path'] == audio_file_path), None)
 
                 if audio_entry:
-                    new_user_scores.append({
+                    new_log_entries.append({
                         'user_name': user,
-                        'audio_file': os.path.basename(audio_file_path), # Keep actual filename in log
+                        'audio_file': os.path.basename(audio_file_path),
                         'transcriptions': audio_entry['transcriptions'],
                         'model_name': audio_entry['model_name'],
                         'model_ver': audio_entry['model_ver'],
@@ -147,18 +140,24 @@ def log_all_evaluations():
                     })
                 else:
                     st.warning(f"Metadata for audio file '{os.path.basename(audio_file_path)}' not found in session state. Skipping log for this file.")
-
-        df_current_user = pd.DataFrame(new_user_scores)
-
-        # Combine the other users' data with the current user's updated data
-        df_final_log = pd.concat([df_other_users, df_current_user], ignore_index=True)
         
-        # Save the complete, updated DataFrame back to the CSV
-        df_final_log.to_csv(LOG_FILE, index=False)
-        st.success(f"All {len(new_user_scores)} scores for {user} saved to '{LOG_FILE}'!")
+        if new_log_entries:
+            df_to_append = pd.DataFrame(new_log_entries)
+            
+            # Check if the log file exists to decide whether to write the header
+            if not os.path.exists(LOG_FILE):
+                df_to_append.to_csv(LOG_FILE, index=False)
+            else:
+                df_to_append.to_csv(LOG_FILE, mode='a', header=False, index=False)
+            
+            st.success(f"All {len(new_log_entries)} scores for {user} saved to '{LOG_FILE}'!")
+            # Reset scores to prevent duplicate logging on subsequent runs
+            st.session_state.scores = {audio['audio_path']: -1 for audio in st.session_state.audio_files}
+        else:
+            st.info("No new scores to save.")
     else:
         st.warning("User name not set. Cannot save logs.")
-        
+
 def next_audio():
     """Advances to the next audio file."""
     _save_score_from_input() # Save current score from the text input before moving
@@ -269,20 +268,19 @@ def main():
         with col3:
             st.button('💾 Save All Scores to Log', on_click=log_all_evaluations)
 
-        st.markdown("---")
-        st.write("### Your Current Scores (Session-only preview):")
+        # st.write("### Your Current Scores (Session-only preview):")
         
-        session_scores_data = []
-        for i, audio_entry in enumerate(st.session_state.audio_files):
-            audio_path = audio_entry['audio_path']
-            score_val = st.session_state.scores.get(audio_path, -1)
-            display_score_in_table = "Unscored" if score_val == -1 else score_val
-            session_scores_data.append({"Audio File": f"Audio {i+1}", "Score": display_score_in_table})
+        # session_scores_data = []
+        # for i, audio_entry in enumerate(st.session_state.audio_files):
+        #     audio_path = audio_entry['audio_path']
+        #     score_val = st.session_state.scores.get(audio_path, -1)
+        #     display_score_in_table = "Unscored" if score_val == -1 else score_val
+        #     session_scores_data.append({"Audio File": f"Audio {i+1}", "Score": display_score_in_table})
         
-        if session_scores_data:
-            st.dataframe(pd.DataFrame(session_scores_data), use_container_width=True)
-        else:
-            st.info("No scores recorded yet in this session.")
+        # if session_scores_data:
+        #     st.dataframe(pd.DataFrame(session_scores_data), use_container_width=True)
+        # else:
+        #     st.info("No scores recorded yet in this session.")
 
         st.markdown("---")
         st.info("Your scores are logged to 'logs/single_eval_log.csv'. **Only scores not equal to -1 will be saved.**")
