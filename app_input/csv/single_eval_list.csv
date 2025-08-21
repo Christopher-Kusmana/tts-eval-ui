@@ -1,6 +1,8 @@
 audio_name,transcriptions,model_ver,model_name
-"v0.0.22_Naznien__mmm__mengenai_masalah_ini,_pa.wav",dummy text 4,0.0.22,Naznien
-"v0.0.22_Naznien_Iya,_padahal_kalau_santai_past.wav",dummy text 5,0.0.22,Naznien
-openai-fm-ballad-friendly.wav,dummy text 1,1.0.22,openai
-"orpheus_Mohon maaf sepertinya ada gangguan sinyal, kami hanya ingin menginformasikan karena riwayat pembayaran kakak yang cukup baik di Gopay Pinjam, kakak bisa mendapatkan potongan biaya untuk penarikan selanjutnya..wav",dummy text 2,2.0.1,orpheus
-"sesame_Mohon maaf sepertinya ada gangguan sinyal, kami hanya ingin menginformasikan karena riwayat pembayaran kakak yang cukup baik di Gopay Pinjam, kakak bisa mendapatkan potongan biaya untuk penarikan selanjutnya..wav",dummy text 3,1.22.1,sesame
+"v0.0.22_Naznien__mmm__mengenai_masalah_ini,_pa.wav",dummy text 1,0.0.22,Naznien
+"v0.0.22_Naznien_Iya,_padahal_kalau_santai_past.wav",dummy text 2,0.0.22,Naznien
+"Naznien_baseline.wav", dummy text 3,0.0.18,Naznien
+"Naznien_experimental.wav", dummy text 4,0.0.19,Naznien
+"Akbar_baseline.wav", dummy text 5,0.0.18,Akbar
+"Akbar_experimental.wav", dummy text 6,0.0.19,Akbar
+
