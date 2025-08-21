@@ -1,0 +1,5 @@
+user_name,model_name,model_ver,audio_file,transcriptions,score,timestamp
+Chris,Naznien,0.0.22,"v0.0.22_Naznien__mmm__mengenai_masalah_ini,_pa.wav",dummy text 1,26,2025-08-21T22:22:03.140910
+Chris,Naznien,0.0.22,"v0.0.22_Naznien_Iya,_padahal_kalau_santai_past.wav",dummy text 2,98,2025-08-21T22:22:15.089912
+Chris,Naznien,0.0.18,Naznien_baseline.wav, dummy text 3,53,2025-08-21T22:22:23.494955
+Chris,Akbar,0.0.18,Akbar_baseline.wav, dummy text 5,70,2025-08-21T22:22:32.672663
