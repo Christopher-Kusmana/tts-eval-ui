@@ -1,3 +1,0 @@
-baseline_audio_name,experimental_audio_name,transcriptions,model_name,baseline_model_ver,experimental_model_ver,baseline_score
-Naznien_baseline.wav,Naznien_experimental.wav,"Hari ini banyak orang memilih menggunakan layanan pembayaran digital karena lebih cepat, praktis, aman, dan memberikan berbagai keuntungan tambahan",Naznien,0.1.8,0.1.9,50
-Akbar_baseline.wav,Akbar_experimental.wav,"Hari ini banyak orang memilih menggunakan layanan pembayaran digital karena lebih cepat, praktis, aman, dan memberikan berbagai keuntungan tambahan",Akbar,0.1.8,0.1.9,70

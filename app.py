@@ -6,7 +6,7 @@ import datetime
 # ----------------------------
 # CONFIG
 # ----------------------------
-CSV_INPUT = "app_input/csv/single_eval_list.csv"
+CSV_INPUT = "app_input/csv/list.csv"
 LOG_DIR = 'app_output'
 LOG_FILE = os.path.join(LOG_DIR, 'single_eval_log.csv')
 AUDIO_DIR = 'app_input/audios'  # Root folder for all models
