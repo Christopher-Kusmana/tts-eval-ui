@@ -1,2 +1,1 @@
-user_name,model_name,baseline_model_ver,experimental_model_ver,baseline_audio_name,experimental_audio_name,baseline_score,new_score,preferred,consistent
-C,Naznien,0.0.22,0.0.18,"v0.0.22_Naznien__mmm__mengenai_masalah_ini,_pa.wav",Naznien_baseline.wav,78,50,experimental,True
+user_name,baseline_model,experimental_model,baseline_audio_name,experimental_audio_name,basline_score,experimental_score,preferred,consistent,baseline_score
