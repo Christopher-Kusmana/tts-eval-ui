@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import os
-import random
 import datetime
+import random
+from itertools import combinations
 
 # --- Paths ---
 INPUT_CSV_PATH = 'app_input/csv/list.csv'
@@ -13,13 +14,13 @@ AUDIO_DIR = 'app_input/audios'
 default_state = {
     'user_name': '',
     'df': None,
-    'phase': 0,  # 0=select baseline/experimental, 1=rate, 2=preference
-    'baseline_col': None,
-    'experimental_col': None,
-    'selected_row': None,
+    'pairs': [],
+    'current_pair_index': 0,
+    'current_row_index': 0,
     'baseline_score': None,
     'experimental_score': None
 }
+
 for key, value in default_state.items():
     if key not in st.session_state:
         st.session_state[key] = value
@@ -86,117 +87,89 @@ def save_log(entry):
     df_log.to_csv(OUTPUT_CSV_PATH, index=False)
 
 
-
-# --- Phase 0: Selection ---
-def phase_0(df):
-    st.header("Step 1: Select Baseline and Experimental Models")
+def generate_model_pairs(df):
     model_cols = [c for c in df.columns if c != 'transcriptions']
+    return list(combinations(model_cols, 2))  # All pairs without repeats
 
-    st.session_state.baseline_col = st.selectbox("Select Baseline Model:", model_cols)
-    exp_options = [m for m in model_cols if m != st.session_state.baseline_col]
-    st.session_state.experimental_col = st.selectbox("Select Experimental Model:", exp_options)
 
-    # Filter rows with existing audio for both models
-    valid_rows = []
-    for idx, row in df.iterrows():
-        base_audio = row[st.session_state.baseline_col]
-        exp_audio = row[st.session_state.experimental_col]
-        if (isinstance(base_audio, str) and os.path.exists(audio_path(st.session_state.baseline_col, base_audio)) and
-            isinstance(exp_audio, str) and os.path.exists(audio_path(st.session_state.experimental_col, exp_audio))):
-            valid_rows.append((idx, row['transcriptions']))
+# --- Phase: Rating Sequentially ---
+def phase_rating(df):
+    total_pairs = len(st.session_state.pairs)
+    # Check if all pairs finished
+    if st.session_state.current_pair_index >= total_pairs:
+        st.success("All model pairs evaluated! 🎉")
+        st.stop()
 
-    if not valid_rows:
-        st.warning("No matching audio pairs found.")
+    b_col, e_col = st.session_state.pairs[st.session_state.current_pair_index]
+
+    # Filter valid rows
+    valid_rows = [
+        idx for idx, row in df.iterrows()
+        if isinstance(row[b_col], str) and row[b_col].strip() and
+           isinstance(row[e_col], str) and row[e_col].strip() and
+           os.path.exists(audio_path(b_col, row[b_col])) and
+           os.path.exists(audio_path(e_col, row[e_col]))
+    ]
+
+    total_samples = len(valid_rows)
+    if total_samples == 0:
+        # Skip empty pair
+        st.session_state.current_pair_index += 1
+        st.session_state.current_row_index = 0
+        st.session_state.baseline_score = None
+        st.session_state.experimental_score = None
+        st.rerun()
         return
 
-    row_labels = [f"{i} - {t}" for i, t in valid_rows]
-    row_choice = st.selectbox("Select transcription:", list(range(len(valid_rows))),
-                              format_func=lambda x: row_labels[x])
-    st.session_state.selected_row = valid_rows[row_choice][0]
-
-    if st.button("Confirm Selection"):
-        st.session_state.phase = 1
+    # Check if finished this pair
+    if st.session_state.current_row_index >= total_samples:
+        st.session_state.current_pair_index += 1
+        st.session_state.current_row_index = 0
+        st.session_state.baseline_score = None
+        st.session_state.experimental_score = None
         st.rerun()
+        return
 
-
-# --- Phase 1: Rating ---
-def phase_1(df):
-    st.header("Phase 1: Rate Both Versions")
-    row = df.iloc[st.session_state.selected_row]
+    row_idx = valid_rows[st.session_state.current_row_index]
+    row = df.iloc[row_idx]
     transcription = row['transcriptions']
-    base_audio = row[st.session_state.baseline_col]
-    exp_audio = row[st.session_state.experimental_col]
+    base_audio = row[b_col]
+    exp_audio = row[e_col]
 
+    st.header(f"Evaluating Pair {st.session_state.current_pair_index + 1} of {total_pairs}: {b_col} vs {e_col}")
+    st.subheader(f"Sample {st.session_state.current_row_index + 1} of {total_samples}")
     st.markdown(f"**Transcription:** {transcription}")
+
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Baseline Audio")
-        play_audio(st.session_state.baseline_col, base_audio)
+        st.subheader(f"{b_col} (Baseline)")
+        play_audio(b_col, base_audio)
     with col2:
-        st.subheader("Experimental Audio")
-        play_audio(st.session_state.experimental_col, exp_audio)
+        st.subheader(f"{e_col} (Exp.)")
+        play_audio(e_col, exp_audio)
 
     st.session_state.baseline_score = st.slider(
-        "Baseline Score:", 0, 100,
-        value=st.session_state.baseline_score or 50
+        "Baseline Score", 0, 100, value=st.session_state.baseline_score or 50
     )
     st.session_state.experimental_score = st.slider(
-        "Experimental Score:", 0, 100,
-        value=st.session_state.experimental_score or 50
+        "Experimental Score", 0, 100, value=st.session_state.experimental_score or 50
     )
 
-    if st.button("Submit Scores"):
-        st.session_state.phase = 2
-        st.rerun()
-
-
-# --- Phase 2: Blind A/B ---
-def phase_2(df):
-    st.header("Phase 2: Blind Preference Test")
-    row = df.iloc[st.session_state.selected_row]
-    base_audio = row[st.session_state.baseline_col]
-    exp_audio = row[st.session_state.experimental_col]
-
-    pair = [
-        ('baseline', st.session_state.baseline_col, base_audio),
-        ('experimental', st.session_state.experimental_col, exp_audio)
-    ]
-    random.shuffle(pair)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Audio 1")
-        play_audio(pair[0][1], pair[0][2])
-    with col2:
-        st.subheader("Audio 2")
-        play_audio(pair[1][1], pair[1][2])
-
-    choice = st.radio("Which do you prefer?", ["Audio 1", "Audio 2"])
-
-    if st.button("Submit Preference"):
-        preferred = pair[0][0] if choice == "Audio 1" else pair[1][0]
-        consistent = preferred == 'experimental'
-
+    if st.button("Submit & Next"):
         log_entry = {
             'user_name': st.session_state.user_name,
-            'baseline_model': st.session_state.baseline_col,
-            'experimental_model': st.session_state.experimental_col,
-            'baseline_audio_name': row[st.session_state.baseline_col],
-            'experimental_audio_name': row[st.session_state.experimental_col],
+            'baseline_model': b_col,
+            'experimental_model': e_col,
+            'baseline_audio_name': base_audio,
+            'experimental_audio_name': exp_audio,
             'baseline_score': st.session_state.baseline_score,
-            'experimental_score': st.session_state.experimental_score,
-            'preferred': preferred,
-            'consistent': consistent
+            'experimental_score': st.session_state.experimental_score
         }
-
         save_log(log_entry)
-        st.success("Evaluation saved!")
-
-        # Reset state
-        for key in ['phase', 'baseline_score', 'experimental_score', 'selected_row']:
-            st.session_state[key] = default_state[key]
+        st.session_state.current_row_index += 1
+        st.session_state.baseline_score = None
+        st.session_state.experimental_score = None
         st.rerun()
-
 
 
 # --- Main ---
@@ -207,18 +180,24 @@ def main():
     if df.empty:
         st.stop()
 
+    # User name input
     if not st.session_state.user_name:
         st.session_state.user_name = st.text_input("Enter your name:")
         if not st.session_state.user_name:
             return
         st.rerun()
 
-    if st.session_state.phase == 0:
-        phase_0(df)
-    elif st.session_state.phase == 1:
-        phase_1(df)
-    elif st.session_state.phase == 2:
-        phase_2(df)
+    # Generate all pairs if not yet
+    if not st.session_state.pairs:
+        st.session_state.pairs = generate_model_pairs(df)
+        st.session_state.current_pair_index = 0
+        st.session_state.current_row_index = 0
+        if not st.session_state.pairs:
+            st.warning("No valid model pairs found.")
+            st.stop()
+
+    # Phase: Sequential rating
+    phase_rating(df)
 
 
 if __name__ == "__main__":

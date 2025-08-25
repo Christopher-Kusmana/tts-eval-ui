@@ -16,11 +16,12 @@ AUDIO_DIR = 'app_input/audios'  # Root folder for all models
 # ----------------------------
 def initialize_session_state():
     defaults = {
-        'user_name': None,
+        'user_name': '',
         'scores': {},
         'page': 'name_input',
-        'current_index': 0,
-        'chosen_model': None,
+        'current_model_index': 0,
+        'current_sample_index': 0,
+        'model_list': [],
         'temp_user_name': ''
     }
     for k, v in defaults.items():
@@ -48,7 +49,7 @@ def load_csv_metadata():
 def submit_name():
     if st.session_state.temp_user_name.strip():
         st.session_state.user_name = st.session_state.temp_user_name.strip()
-        st.session_state.page = 'model_select'
+        st.session_state.page = 'evaluation'
     else:
         st.warning("Please enter your name to start.")
 
@@ -102,7 +103,7 @@ def show_sidebar_criteria():
         ("90–99", "Extremely natural", "Feels human."),
         ("100", "Perfect", "Indistinguishable from real.")
     ]
-    df = pd.DataFrame(criteria, columns=["Score Range", "Rating Label", "Description"])
+    df = pd.DataFrame(criteria, columns=["Score Range", "Label", "Description"])
     st.sidebar.markdown(df.to_html(index=False), unsafe_allow_html=True)
 
 # ----------------------------
@@ -118,66 +119,66 @@ def main():
     if df.empty:
         st.stop()
 
-    # ---------------- NAME INPUT PAGE ----------------
+    # ---------------- NAME INPUT ----------------
     if st.session_state.page == 'name_input':
         st.title("TTS Evaluation App")
-        st.text_input("Your Name:", key='temp_user_name')
-        st.button("Start Evaluation", on_click=submit_name)
-
-    # ---------------- MODEL SELECT PAGE ----------------
-    elif st.session_state.page == 'model_select':
-        st.title(f"Welcome {st.session_state.user_name}!")
-        model_cols = [c for c in df.columns if c != 'transcriptions']
-        chosen_model = st.selectbox("Select Model:", model_cols)
-
-        if st.button("Start Evaluating"):
-            if chosen_model:
-                st.session_state.chosen_model = chosen_model
-                st.session_state.page = 'evaluation'
-                st.session_state.current_index = 0
-                st.rerun()
-            else:
-                st.warning("Please select a model to continue.")
-
-    # ---------------- EVALUATION PAGE ----------------
-    elif st.session_state.page == 'evaluation':
-        chosen_model_col = st.session_state.chosen_model
-        valid_rows = [
-            (idx, row['transcriptions'], row[chosen_model_col])
-            for idx, row in df.iterrows()
-            if isinstance(row[chosen_model_col], str) and row[chosen_model_col].strip()
-        ]
-
-        # Finished evaluating all samples
-        if st.session_state.current_index >= len(valid_rows):
-            st.success(f"Finished all samples for model: {chosen_model_col} 🎉")
-            st.session_state.page = 'model_select'
-            st.session_state.current_index = 0
-            st.rerun()
-
-        row_idx, transcription, audio_file_name = valid_rows[st.session_state.current_index]
-        audio_path = os.path.join(AUDIO_DIR, chosen_model_col, audio_file_name)
-
-        st.title(f"Sample {st.session_state.current_index + 1} of {len(valid_rows)}")
-        st.audio(audio_path, format='audio/wav')
-        st.markdown(f"**Transcript:** {transcription}")
-
-        score_key = f"{chosen_model_col}_{audio_file_name}"
-        if score_key not in st.session_state:
-            st.session_state[score_key] = 0
-
-        score = st.slider(
-            "Enter Score (0–100):",
-            min_value=0,
-            max_value=100,
-            step=1,
-            key=score_key
+        st.text_input(
+            "Enter your name:",
+            key='temp_user_name',
+            on_change=submit_name
         )
+        return
 
-        if st.button("💾 Save & Next"):
-            log_score(chosen_model_col, audio_file_name, transcription, score)
-            st.session_state.current_index += 1
-            st.rerun()
+    # ---------------- EVALUATION ----------------
+    if not st.session_state.model_list:
+        st.session_state.model_list = [c for c in df.columns if c != 'transcriptions']
+
+    # Finished all models
+    if st.session_state.current_model_index >= len(st.session_state.model_list):
+        st.success("All models evaluated! 🎉")
+        return
+
+    current_model = st.session_state.model_list[st.session_state.current_model_index]
+    valid_rows = [
+        (idx, row['transcriptions'], row[current_model])
+        for idx, row in df.iterrows()
+        if isinstance(row[current_model], str) and row[current_model].strip()
+    ]
+
+    # Finished all samples for current model
+    if st.session_state.current_sample_index >= len(valid_rows):
+        st.session_state.current_model_index += 1
+        st.session_state.current_sample_index = 0
+        st.session_state.rerun = True
+        st.rerun()
+        return
+
+    # Display current sample
+    row_idx, transcription, audio_file_name = valid_rows[st.session_state.current_sample_index]
+    audio_path = os.path.join(AUDIO_DIR, current_model, audio_file_name)
+
+    st.title(f"Model {st.session_state.current_model_index + 1} of {len(st.session_state.model_list)}: {st.session_state.model_list[st.session_state.current_model_index]}")
+    st.subheader(f"Sample {st.session_state.current_sample_index + 1} of {len(valid_rows)}")
+    st.audio(audio_path, format='audio/wav')
+    st.markdown(f"**Transcript:** {transcription}")
+
+    score_key = f"{current_model}_{audio_file_name}"
+    if score_key not in st.session_state:
+        st.session_state[score_key] = 0
+
+    score = st.slider(
+        "Enter Score (0–100):",
+        min_value=0,
+        max_value=100,
+        step=1,
+        key=score_key
+    )
+
+    if st.button("💾 Save & Next"):
+        log_score(current_model, audio_file_name, transcription, score)
+        st.session_state.current_sample_index += 1
+        st.rerun()
+
 
 if __name__ == "__main__":
     main()
