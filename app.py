@@ -16,13 +16,13 @@ AUDIO_DIR = 'app_input/audios'  # Root folder for all models
 # ----------------------------
 def initialize_session_state():
     defaults = {
-        'user_name': '',
-        'scores': {},
+        'user_name': None,
+        'temp_user_name': '',
         'page': 'name_input',
-        'current_model_index': 0,
-        'current_sample_index': 0,
-        'model_list': [],
-        'temp_user_name': ''
+        'chosen_model': None,
+        'current_index': 0,
+        'valid_rows': [],
+        'scores': {}
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -49,7 +49,7 @@ def load_csv_metadata():
 def submit_name():
     if st.session_state.temp_user_name.strip():
         st.session_state.user_name = st.session_state.temp_user_name.strip()
-        st.session_state.page = 'evaluation'
+        st.session_state.page = 'model_select'
     else:
         st.warning("Please enter your name to start.")
 
@@ -119,66 +119,64 @@ def main():
     if df.empty:
         st.stop()
 
-    # ---------------- NAME INPUT ----------------
+    # ---------------- NAME INPUT PAGE ----------------
     if st.session_state.page == 'name_input':
         st.title("TTS Evaluation App")
-        st.text_input(
-            "Enter your name:",
-            key='temp_user_name',
-            on_change=submit_name
+        st.text_input("Your Name:", key='temp_user_name', on_change=submit_name)
+
+    # ---------------- MODEL SELECT PAGE ----------------
+    elif st.session_state.page == 'model_select':
+        st.title(f"Welcome {st.session_state.user_name}!")
+        model_cols = [c for c in df.columns if c != 'transcriptions']
+        st.session_state.chosen_model = st.selectbox("Select Model to Evaluate:", model_cols)
+        if st.session_state.chosen_model:
+            # Prepare valid rows for iteration
+            st.session_state.valid_rows = [
+                (idx, row['transcriptions'], row[st.session_state.chosen_model])
+                for idx, row in df.iterrows()
+                if isinstance(row[st.session_state.chosen_model], str) and row[st.session_state.chosen_model].strip() and
+                os.path.exists(os.path.join(AUDIO_DIR, st.session_state.chosen_model, row[st.session_state.chosen_model]))
+            ]
+            st.session_state.current_index = 0
+            if st.button("Start Evaluating"):
+                st.session_state.page = 'evaluation'
+                st.rerun()
+
+    # ---------------- EVALUATION PAGE ----------------
+    elif st.session_state.page == 'evaluation':
+        chosen_model_col = st.session_state.chosen_model
+        current_idx = st.session_state.current_index
+        total = len(st.session_state.valid_rows)
+
+        # Finished evaluating all samples
+        if current_idx >= total:
+            st.success(f"Finished all samples for model: {chosen_model_col} 🎉")
+            st.session_state.page = 'model_select'
+            st.rerun()
+
+        row_idx, transcription, audio_file_name = st.session_state.valid_rows[current_idx]
+        audio_path = os.path.join(AUDIO_DIR, chosen_model_col, audio_file_name)
+
+        st.title(f"Sample {current_idx + 1} of {total} - Model: {chosen_model_col}")
+        st.audio(audio_path, format='audio/wav')
+        st.markdown(f"**Transcript:** {transcription}")
+
+        score_key = f"{chosen_model_col}_{audio_file_name}"
+        if score_key not in st.session_state:
+            st.session_state[score_key] = 0  # default slider
+
+        score = st.slider(
+            "Enter Score (0–100):",
+            min_value=0,
+            max_value=100,
+            step=1,
+            key=score_key
         )
-        return
 
-    # ---------------- EVALUATION ----------------
-    if not st.session_state.model_list:
-        st.session_state.model_list = [c for c in df.columns if c != 'transcriptions']
-
-    # Finished all models
-    if st.session_state.current_model_index >= len(st.session_state.model_list):
-        st.success("All models evaluated! 🎉")
-        return
-
-    current_model = st.session_state.model_list[st.session_state.current_model_index]
-    valid_rows = [
-        (idx, row['transcriptions'], row[current_model])
-        for idx, row in df.iterrows()
-        if isinstance(row[current_model], str) and row[current_model].strip()
-    ]
-
-    # Finished all samples for current model
-    if st.session_state.current_sample_index >= len(valid_rows):
-        st.session_state.current_model_index += 1
-        st.session_state.current_sample_index = 0
-        st.session_state.rerun = True
-        st.rerun()
-        return
-
-    # Display current sample
-    row_idx, transcription, audio_file_name = valid_rows[st.session_state.current_sample_index]
-    audio_path = os.path.join(AUDIO_DIR, current_model, audio_file_name)
-
-    st.title(f"Model {st.session_state.current_model_index + 1} of {len(st.session_state.model_list)}: {st.session_state.model_list[st.session_state.current_model_index]}")
-    st.subheader(f"Sample {st.session_state.current_sample_index + 1} of {len(valid_rows)}")
-    st.audio(audio_path, format='audio/wav')
-    st.markdown(f"**Transcript:** {transcription}")
-
-    score_key = f"{current_model}_{audio_file_name}"
-    if score_key not in st.session_state:
-        st.session_state[score_key] = 0
-
-    score = st.slider(
-        "Enter Score (0–100):",
-        min_value=0,
-        max_value=100,
-        step=1,
-        key=score_key
-    )
-
-    if st.button("💾 Save & Next"):
-        log_score(current_model, audio_file_name, transcription, score)
-        st.session_state.current_sample_index += 1
-        st.rerun()
-
+        if st.button("💾 Save & Next"):
+            log_score(chosen_model_col, audio_file_name, transcription, score)
+            st.session_state.current_index += 1
+            st.rerun()
 
 if __name__ == "__main__":
     main()
