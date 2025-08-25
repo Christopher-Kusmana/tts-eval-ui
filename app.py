@@ -15,12 +15,17 @@ AUDIO_DIR = 'app_input/audios'  # Root folder for all models
 # SESSION STATE INITIALIZATION
 # ----------------------------
 def initialize_session_state():
-    if 'user_name' not in st.session_state:
-        st.session_state.user_name = None
-    if 'scores' not in st.session_state:
-        st.session_state.scores = {}
-    if 'page' not in st.session_state:
-        st.session_state.page = 'name_input'
+    defaults = {
+        'user_name': None,
+        'scores': {},
+        'page': 'name_input',
+        'current_index': 0,
+        'chosen_model': None,
+        'temp_user_name': ''
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 def ensure_dirs():
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -37,24 +42,22 @@ def load_csv_metadata():
         return pd.DataFrame()
     return df
 
+# ----------------------------
+# NAME SUBMISSION
+# ----------------------------
 def submit_name():
-    if st.session_state.temp_user_name:
-        st.session_state.user_name = st.session_state.temp_user_name
-        st.session_state.page = 'evaluation'
+    if st.session_state.temp_user_name.strip():
+        st.session_state.user_name = st.session_state.temp_user_name.strip()
+        st.session_state.page = 'model_select'
     else:
         st.warning("Please enter your name to start.")
 
 # ----------------------------
-# LOGGING FUNCTION (UPDATED)
+# LOGGING FUNCTION
 # ----------------------------
 def log_score(model_col, audio_name, transcription, score):
     ensure_dirs()
-    if not st.session_state.user_name:
-        st.warning("User name not set. Cannot save logs.")
-        return
-
     timestamp = datetime.datetime.now().isoformat()
-
     new_entry = pd.DataFrame([{
         'user_name': st.session_state.user_name,
         'model': model_col,
@@ -64,10 +67,9 @@ def log_score(model_col, audio_name, transcription, score):
         'timestamp': timestamp
     }])
 
-    # Load existing log if exists
     if os.path.exists(LOG_FILE):
         df_log = pd.read_csv(LOG_FILE)
-        # Remove any existing entry for this combination (to overwrite)
+        # Remove existing entry to overwrite
         df_log = df_log[
             ~(
                 (df_log['user_name'] == st.session_state.user_name) &
@@ -116,42 +118,47 @@ def main():
     if df.empty:
         st.stop()
 
-    # PAGE: NAME INPUT
+    # ---------------- NAME INPUT PAGE ----------------
     if st.session_state.page == 'name_input':
         st.title("TTS Evaluation App")
-        st.text_input("Your Name:", key='temp_user_name', on_change=submit_name)
+        st.text_input("Your Name:", key='temp_user_name')
         st.button("Start Evaluation", on_click=submit_name)
 
-    # PAGE: EVALUATION
-    elif st.session_state.page == 'evaluation':
-        st.title(f"Hello, {st.session_state.user_name}! 🎧")
-        st.markdown("---")
-
+    # ---------------- MODEL SELECT PAGE ----------------
+    elif st.session_state.page == 'model_select':
+        st.title(f"Welcome {st.session_state.user_name}!")
         model_cols = [c for c in df.columns if c != 'transcriptions']
-        chosen_model_col = st.selectbox("Select Model:", model_cols)
+        chosen_model = st.selectbox("Select Model:", model_cols)
 
-        valid_rows = []
-        for idx, row in df.iterrows():
-            audio_file_name = row[chosen_model_col]
-            if isinstance(audio_file_name, str) and audio_file_name.strip():
-                audio_path = os.path.join(AUDIO_DIR, chosen_model_col, audio_file_name)
-                if os.path.exists(audio_path):
-                    valid_rows.append((idx, row['transcriptions'], audio_file_name))
+        if st.button("Start Evaluating"):
+            if chosen_model:
+                st.session_state.chosen_model = chosen_model
+                st.session_state.page = 'evaluation'
+                st.session_state.current_index = 0
+                st.rerun()
+            else:
+                st.warning("Please select a model to continue.")
 
-        if not valid_rows:
-            st.warning(f"No audio files found for model: {chosen_model_col}")
-            st.stop()
+    # ---------------- EVALUATION PAGE ----------------
+    elif st.session_state.page == 'evaluation':
+        chosen_model_col = st.session_state.chosen_model
+        valid_rows = [
+            (idx, row['transcriptions'], row[chosen_model_col])
+            for idx, row in df.iterrows()
+            if isinstance(row[chosen_model_col], str) and row[chosen_model_col].strip()
+        ]
 
-        row_display = [f"{i} - {t}" for i, t, _ in valid_rows]
-        row_idx_choice = st.selectbox(
-            "Select Audio by Transcript:",
-            list(range(len(valid_rows))),
-            format_func=lambda x: row_display[x]
-        )
+        # Finished evaluating all samples
+        if st.session_state.current_index >= len(valid_rows):
+            st.success(f"Finished all samples for model: {chosen_model_col} 🎉")
+            st.session_state.page = 'model_select'
+            st.session_state.current_index = 0
+            st.rerun()
 
-        row_idx, transcription, audio_file_name = valid_rows[row_idx_choice]
+        row_idx, transcription, audio_file_name = valid_rows[st.session_state.current_index]
         audio_path = os.path.join(AUDIO_DIR, chosen_model_col, audio_file_name)
 
+        st.title(f"Sample {st.session_state.current_index + 1} of {len(valid_rows)}")
         st.audio(audio_path, format='audio/wav')
         st.markdown(f"**Transcript:** {transcription}")
 
@@ -167,10 +174,10 @@ def main():
             key=score_key
         )
 
-        st.session_state.scores[f"{chosen_model_col}/{audio_file_name}"] = score
-
-        if st.button("💾 Save Score"):
+        if st.button("💾 Save & Next"):
             log_score(chosen_model_col, audio_file_name, transcription, score)
+            st.session_state.current_index += 1
+            st.rerun()
 
 if __name__ == "__main__":
     main()
