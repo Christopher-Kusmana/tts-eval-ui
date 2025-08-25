@@ -1,0 +1,145 @@
+import streamlit as st
+import pandas as pd
+import os
+import random
+import datetime
+
+# ----------------------------
+# CONFIG
+# ----------------------------
+TEST_AUDIO_DIR = "./app_input/audios/test"
+LOG_DIR = "./app_output"
+LOG_FILE = os.path.join(LOG_DIR, "criteria_test_log.csv")
+
+# Expected reference scores for sample_0.wav to sample_9.wav
+REFERENCE_SCORES = {f"sample_{i}.wav": i + 1 for i in range(10)}  # 1–10 scale
+TOTAL_TESTS = len(REFERENCE_SCORES)
+
+# ----------------------------
+# SIDEBAR CRITERIA
+# ----------------------------
+def show_sidebar_criteria():
+    st.sidebar.title("📊 Rating Criteria")
+    criteria = [
+        ("0", "Not speech", "Just noise or broken sound."),
+        ("1", "Very hard to hear", "Almost nothing is clear."),
+        ("2", "Very bad", "Many word errors."),
+        ("3", "Bad", "Robotic or awkward."),
+        ("4", "Not natural", "Flat or unnatural."),
+        ("5", "Clear but robotic", "No emotion."),
+        ("6", "Mostly accurate", "Some pitch/emotion."),
+        ("7", "Natural feel", "Minor issues."),
+        ("8", "Very natural", "Almost no errors."),
+        ("9", "Extremely natural", "Feels human."),
+        ("10", "Perfect", "Indistinguishable from real.")
+    ]
+    df = pd.DataFrame(criteria, columns=["Score", "Label", "Description"])
+    st.sidebar.markdown(df.to_html(index=False), unsafe_allow_html=True)
+
+# ----------------------------
+# SESSION STATE INITIALIZATION
+# ----------------------------
+def initialize_session_state():
+    defaults = {
+        "user_name": None,
+        "current_audio": None,
+        "chosen_score": None,
+        "done_audios": set(),
+        "page": "name_input",
+        "temp_user_name": ""
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+def ensure_dirs():
+    os.makedirs(LOG_DIR, exist_ok=True)
+    os.makedirs(TEST_AUDIO_DIR, exist_ok=True)
+
+def pick_random_audio():
+    remaining = list(set(REFERENCE_SCORES.keys()) - st.session_state.done_audios)
+    if not remaining:
+        return None
+    return random.choice(remaining)
+
+def log_user_score(audio_name, reference_score, user_score):
+    ensure_dirs()
+    timestamp = datetime.datetime.now().isoformat()
+    new_entry = pd.DataFrame([{
+        "user_name": st.session_state.user_name,
+        "audio_name": audio_name,
+        "reference_score": reference_score,
+        "user_score": user_score,
+        "timestamp": timestamp
+    }])
+
+    if os.path.exists(LOG_FILE):
+        df_log = pd.read_csv(LOG_FILE)
+        # Remove existing record for this user & audio
+        df_log = df_log[
+            ~((df_log["user_name"] == st.session_state.user_name) &
+              (df_log["audio_name"] == audio_name))
+        ]
+        df_log = pd.concat([df_log, new_entry], ignore_index=True)
+    else:
+        df_log = new_entry
+
+    df_log.to_csv(LOG_FILE, index=False)
+
+def main():
+    st.set_page_config(page_title="Criteria Understanding Test", layout="centered")
+    initialize_session_state()
+    ensure_dirs()
+    show_sidebar_criteria()
+
+    # ---------------- Name Input Page ----------------
+    if st.session_state.page == "name_input":
+        st.title("Criteria Understanding Test")
+        st.text_input("Enter your name:", key="temp_user_name")
+
+        if st.button("Start Test", key="start_test"):
+            if st.session_state.temp_user_name.strip():
+                st.session_state.user_name = st.session_state.temp_user_name
+                st.session_state.page = "testing"
+                st.session_state.current_audio = pick_random_audio()
+                st.rerun()
+
+    # ---------------- Testing Page ----------------
+    elif st.session_state.page == "testing":
+        done_count = len(st.session_state.done_audios)
+        st.markdown(f"### Progress: {done_count}/{TOTAL_TESTS} audios rated")
+
+        if done_count >= TOTAL_TESTS:
+            st.success("All audios have been rated! Thank you for completing the test.")
+            return
+
+        st.title(f"Hello {st.session_state.user_name}! Rate the following audio.")
+        audio_name = st.session_state.current_audio
+        audio_path = os.path.join(TEST_AUDIO_DIR, audio_name)
+
+        if os.path.exists(audio_path):
+            st.audio(audio_path, format="audio/wav")
+
+            # Initialize chosen_score
+            if "chosen_score" not in st.session_state or st.session_state.chosen_score is None:
+                st.session_state.chosen_score = 5
+
+            st.slider(
+                "Rate from 1 (worst) to 10 (best):",
+                min_value=1,
+                max_value=10,
+                step=1,
+                key="chosen_score"
+            )
+
+            if st.button("Submit Score", key=f"submit_{audio_name}"):
+                ref_score = REFERENCE_SCORES[audio_name]
+                log_user_score(audio_name, ref_score, st.session_state.chosen_score)
+                st.session_state.done_audios.add(audio_name)
+                st.session_state.current_audio = pick_random_audio()
+                st.rerun()
+        else:
+            st.error(f"Audio file not found: {audio_path}")
+
+if __name__ == "__main__":
+    main()
