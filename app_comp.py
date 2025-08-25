@@ -66,7 +66,7 @@ def append_to_log(log_entry):
 
     if os.path.exists(OUTPUT_CSV_PATH):
         existing_df = pd.read_csv(OUTPUT_CSV_PATH)
-        # Filter out any previous entry for this combination
+        # Filter out any previous entry for this combination 
         mask = ~(
             (existing_df['user_name'] == log_entry['user_name']) &
             (existing_df['model_name'] == log_entry['model_name']) &
