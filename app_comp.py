@@ -87,7 +87,10 @@ def save_log(entry):
 # --- Phase 0: Model Selection ---
 def phase_0(df):
     st.header("Step 1: Select Baseline and Experimental Models")
-    model_cols = [c for c in df.columns if c != 'transcriptions']
+    model_cols = [
+    c for c in df.columns
+    if c != 'transcriptions' and not c.startswith('baseline')
+]
 
     st.session_state.baseline_col = st.selectbox("Select Baseline Model:", model_cols)
     exp_options = [m for m in model_cols if m != st.session_state.baseline_col]
@@ -115,24 +118,45 @@ def phase_1(df):
     row_total = len(st.session_state.valid_rows)
     row_idx, transcription, base_audio, exp_audio = st.session_state.valid_rows[row_num]
 
-    st.header(f"Phase 1: Rate Both Versions ({row_num+1} of {row_total})")
+    st.header(f"Phase 1: Rate Experimental Version ({row_num+1} of {row_total})")
     st.markdown(f"**Transcription:** {transcription}")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Baseline Audio")
-        play_audio(st.session_state.baseline_col, base_audio)
-    with col2:
-        st.subheader("Experimental Audio")
-        play_audio(st.session_state.experimental_col, exp_audio)
+    # Retrieve baseline reference score from dataframe
+    baseline_value_col = f"baseline_{st.session_state.baseline_col}"
+    baseline_value = (
+        df.loc[row_idx, baseline_value_col]
+        if baseline_value_col in df.columns else None
+    )
 
-    baseline_score = st.slider("Baseline Score:", 0, 100, value=50)
+    # Handle missing or NaN baseline values
+    if baseline_value is None or pd.isna(baseline_value):
+        baseline_value = 0
+    else:
+        baseline_value = int(baseline_value)
+
+    # --- Baseline Section (Top) ---
+    st.subheader("Baseline Audio (Reference)")
+    play_audio(st.session_state.baseline_col, base_audio)
+    st.slider(
+        "Baseline Score (Fixed)",
+        min_value=0,
+        max_value=100,
+        value=baseline_value,
+        disabled=True
+    )
+
+    # --- Experimental Section (Below) ---
+    st.subheader("Experimental Audio")
+    play_audio(st.session_state.experimental_col, exp_audio)
     experimental_score = st.slider("Experimental Score:", 0, 100, value=50)
+
+    # --- Remarks ---
     remarks = st.text_area("Additional Remarks (optional):", key=f"remarks_{row_num}")
     st.session_state.remarks[row_num] = remarks
 
-    if st.button("Submit Scores"):
-        st.session_state.baseline_scores.append(baseline_score)
+    # --- Submission ---
+    if st.button("Submit Score"):
+        st.session_state.baseline_scores.append(baseline_value)
         st.session_state.experimental_scores.append(experimental_score)
         st.session_state.current_index += 1
 
@@ -147,6 +171,7 @@ def phase_1(df):
             st.session_state.current_index = 0
             st.session_state.phase1_done = True
             st.session_state.phase = 2
+
         st.rerun()
 
 # --- Phase 2: Blind A/B ---

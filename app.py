@@ -60,6 +60,8 @@ def submit_name():
 def log_score(model_col, audio_name, transcription, score, remark):
     ensure_dirs()
     timestamp = datetime.datetime.now().isoformat()
+
+    # --- Logging to single_eval_log.csv ---
     new_entry = pd.DataFrame([{
         'user_name': st.session_state.user_name,
         'model': model_col,
@@ -72,7 +74,7 @@ def log_score(model_col, audio_name, transcription, score, remark):
 
     if os.path.exists(LOG_FILE):
         df_log = pd.read_csv(LOG_FILE)
-        # Remove existing entry to overwrite
+        # Remove existing entry for same user+model+audio to overwrite
         df_log = df_log[
             ~(
                 (df_log['user_name'] == st.session_state.user_name) &
@@ -85,7 +87,23 @@ def log_score(model_col, audio_name, transcription, score, remark):
         df_log = new_entry
 
     df_log.to_csv(LOG_FILE, index=False)
+
+    # --- Update baseline only if user is "Manchin" ---
+    if st.session_state.user_name == "Manchin":
+        if os.path.exists(CSV_INPUT):
+            df_main = pd.read_csv(CSV_INPUT)
+            baseline_col = f"baseline_{model_col}"
+            if baseline_col not in df_main.columns:
+                df_main[baseline_col] = None
+
+            # Find row and update score
+            match_idx = df_main[df_main[model_col] == audio_name].index
+            if not match_idx.empty:
+                df_main.loc[match_idx, baseline_col] = int(score)  # <-- cast to int
+                df_main.to_csv(CSV_INPUT, index=False)
+
     st.success(f"Score & remarks saved for {audio_name} ({model_col})!")
+
 
 # ----------------------------
 # SIDEBAR CRITERIA
@@ -129,15 +147,20 @@ def main():
     # ---------------- MODEL SELECT PAGE ----------------
     elif st.session_state.page == 'model_select':
         st.title(f"Welcome {st.session_state.user_name}!")
-        model_cols = [c for c in df.columns if c != 'transcriptions']
+        model_cols = [
+    c for c in df.columns
+    if c != 'transcriptions' and not c.startswith('baseline')
+]
+
         st.session_state.chosen_model = st.selectbox("Select Model to Evaluate:", model_cols)
         if st.session_state.chosen_model:
-            # Prepare valid rows for iteration
+            # Prepare valid rows
             st.session_state.valid_rows = [
                 (idx, row['transcriptions'], row[st.session_state.chosen_model])
                 for idx, row in df.iterrows()
-                if isinstance(row[st.session_state.chosen_model], str) and row[st.session_state.chosen_model].strip() and
-                os.path.exists(os.path.join(AUDIO_DIR, st.session_state.chosen_model, row[st.session_state.chosen_model]))
+                if isinstance(row[st.session_state.chosen_model], str)
+                and row[st.session_state.chosen_model].strip()
+                and os.path.exists(os.path.join(AUDIO_DIR, st.session_state.chosen_model, row[st.session_state.chosen_model]))
             ]
             st.session_state.current_index = 0
             if st.button("Start Evaluating"):
@@ -150,7 +173,6 @@ def main():
         current_idx = st.session_state.current_index
         total = len(st.session_state.valid_rows)
 
-        # Finished evaluating all samples
         if current_idx >= total:
             st.success(f"Finished all samples for model: {chosen_model_col} 🎉")
             st.session_state.page = 'model_select'
@@ -167,18 +189,11 @@ def main():
         remark_key = f"{chosen_model_col}_{audio_file_name}_remark"
 
         if score_key not in st.session_state:
-            st.session_state[score_key] = 0  # default slider
+            st.session_state[score_key] = 0
         if remark_key not in st.session_state:
-            st.session_state[remark_key] = ""  # default empty remark
+            st.session_state[remark_key] = ""
 
-        score = st.slider(
-            "Enter Score (0–100):",
-            min_value=0,
-            max_value=100,
-            step=1,
-            key=score_key
-        )
-
+        score = st.slider("Enter Score (0–100):", min_value=0, max_value=100, step=1, key=score_key)
         remark = st.text_input("Remarks (optional):", key=remark_key)
 
         if st.button("💾 Save & Next"):
