@@ -22,7 +22,8 @@ def initialize_session_state():
         'chosen_model': None,
         'current_index': 0,
         'valid_rows': [],
-        'scores': {}
+        'scores': {},
+        'remarks': {}
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -56,7 +57,7 @@ def submit_name():
 # ----------------------------
 # LOGGING FUNCTION
 # ----------------------------
-def log_score(model_col, audio_name, transcription, score):
+def log_score(model_col, audio_name, transcription, score, remark):
     ensure_dirs()
     timestamp = datetime.datetime.now().isoformat()
     new_entry = pd.DataFrame([{
@@ -65,6 +66,7 @@ def log_score(model_col, audio_name, transcription, score):
         'audio_file': audio_name,
         'transcriptions': transcription,
         'score': score,
+        'remarks': remark,
         'timestamp': timestamp
     }])
 
@@ -83,7 +85,7 @@ def log_score(model_col, audio_name, transcription, score):
         df_log = new_entry
 
     df_log.to_csv(LOG_FILE, index=False)
-    st.success(f"Score saved for {audio_name} ({model_col})!")
+    st.success(f"Score & remarks saved for {audio_name} ({model_col})!")
 
 # ----------------------------
 # SIDEBAR CRITERIA
@@ -161,9 +163,13 @@ def main():
         st.audio(audio_path, format='audio/wav')
         st.markdown(f"**Transcript:** {transcription}")
 
-        score_key = f"{chosen_model_col}_{audio_file_name}"
+        score_key = f"{chosen_model_col}_{audio_file_name}_score"
+        remark_key = f"{chosen_model_col}_{audio_file_name}_remark"
+
         if score_key not in st.session_state:
             st.session_state[score_key] = 0  # default slider
+        if remark_key not in st.session_state:
+            st.session_state[remark_key] = ""  # default empty remark
 
         score = st.slider(
             "Enter Score (0–100):",
@@ -173,8 +179,10 @@ def main():
             key=score_key
         )
 
+        remark = st.text_input("Remarks (optional):", key=remark_key)
+
         if st.button("💾 Save & Next"):
-            log_score(chosen_model_col, audio_file_name, transcription, score)
+            log_score(chosen_model_col, audio_file_name, transcription, score, remark)
             st.session_state.current_index += 1
             st.rerun()
 

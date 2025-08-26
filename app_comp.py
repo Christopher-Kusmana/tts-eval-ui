@@ -13,13 +13,15 @@ AUDIO_DIR = 'app_input/audios'
 default_state = {
     'user_name': '',
     'df': None,
-    'phase': 0,  # 0=select baseline/experimental, 1=rate, 2=preference
+    'phase': 0,  # 0=select, 1=rate, 2=blind preference
     'baseline_col': None,
     'experimental_col': None,
     'valid_rows': [],
     'current_index': 0,
-    'baseline_score': None,
-    'experimental_score': None
+    'phase1_done': False,
+    'baseline_scores': [],
+    'experimental_scores': [],
+    'remarks': {}  
 }
 
 for key, value in default_state.items():
@@ -92,7 +94,6 @@ def phase_0(df):
     st.session_state.experimental_col = st.selectbox("Select Experimental Model:", exp_options)
 
     if st.button("Confirm Models"):
-        # Filter rows that have audio for both selected models
         st.session_state.valid_rows = [
             (idx, row['transcriptions'], row[st.session_state.baseline_col], row[st.session_state.experimental_col])
             for idx, row in df.iterrows()
@@ -125,15 +126,27 @@ def phase_1(df):
         st.subheader("Experimental Audio")
         play_audio(st.session_state.experimental_col, exp_audio)
 
-    st.session_state.baseline_score = st.slider(
-        "Baseline Score:", 0, 100, value=st.session_state.baseline_score or 50
-    )
-    st.session_state.experimental_score = st.slider(
-        "Experimental Score:", 0, 100, value=st.session_state.experimental_score or 50
-    )
+    baseline_score = st.slider("Baseline Score:", 0, 100, value=50)
+    experimental_score = st.slider("Experimental Score:", 0, 100, value=50)
+    remarks = st.text_area("Additional Remarks (optional):", key=f"remarks_{row_num}")
+    st.session_state.remarks[row_num] = remarks
 
     if st.button("Submit Scores"):
-        st.session_state.phase = 2
+        st.session_state.baseline_scores.append(baseline_score)
+        st.session_state.experimental_scores.append(experimental_score)
+        st.session_state.current_index += 1
+
+        if st.session_state.current_index >= row_total:
+            combined = list(zip(
+                st.session_state.valid_rows,
+                st.session_state.baseline_scores,
+                st.session_state.experimental_scores
+            ))
+            random.shuffle(combined)
+            st.session_state.valid_rows, st.session_state.baseline_scores, st.session_state.experimental_scores = zip(*combined)
+            st.session_state.current_index = 0
+            st.session_state.phase1_done = True
+            st.session_state.phase = 2
         st.rerun()
 
 # --- Phase 2: Blind A/B ---
@@ -158,11 +171,17 @@ def phase_2(df):
         st.subheader("Audio 2")
         play_audio(pair[1][1], pair[1][2])
 
-    choice = st.radio("Which do you prefer?", ["Audio 1", "Audio 2"])
+    choice = st.radio("Which do you prefer?", ["Audio 1", "Audio 2", "Tie"])
 
     if st.button("Submit Preference"):
-        preferred = pair[0][0] if choice == "Audio 1" else pair[1][0]
-        consistent = preferred == 'experimental'
+        if choice == "Tie":
+            preferred = "tie"
+            consistent = None
+        else:
+            preferred = pair[0][0] if choice == "Audio 1" else pair[1][0]
+            consistent = preferred == 'experimental'
+
+        remarks = st.session_state.remarks.get(row_num, "")
 
         log_entry = {
             'user_name': st.session_state.user_name,
@@ -170,24 +189,24 @@ def phase_2(df):
             'experimental_model': st.session_state.experimental_col,
             'baseline_audio_name': base_audio,
             'experimental_audio_name': exp_audio,
-            'baseline_score': st.session_state.baseline_score,
-            'experimental_score': st.session_state.experimental_score,
+            'baseline_score': st.session_state.baseline_scores[row_num],
+            'experimental_score': st.session_state.experimental_scores[row_num],
             'preferred': preferred,
-            'consistent': consistent
+            'consistent': consistent,
+            'remarks': remarks
         }
 
         save_log(log_entry)
-        st.success("Evaluation saved!")
-
-        # Move to next transcript
         st.session_state.current_index += 1
-        st.session_state.baseline_score = None
-        st.session_state.experimental_score = None
-        if st.session_state.current_index >= len(st.session_state.valid_rows):
-            st.success("All pairs evaluated! 🎉")
-            st.session_state.phase = 0  # Go back to model selection
-        else:
-            st.session_state.phase = 1
+
+        if st.session_state.current_index >= row_total:
+            st.success("All evaluations complete! 🎉")
+            st.session_state.phase = 0
+            st.session_state.phase1_done = False
+            st.session_state.current_index = 0
+            st.session_state.baseline_scores = []
+            st.session_state.experimental_scores = []
+            st.session_state.remarks = {}
         st.rerun()
 
 # --- Main ---
@@ -210,7 +229,6 @@ def main():
         phase_1(df)
     elif st.session_state.phase == 2:
         phase_2(df)
-
 
 if __name__ == "__main__":
     main()
