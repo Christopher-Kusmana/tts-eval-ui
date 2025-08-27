@@ -86,6 +86,41 @@ def log_user_score(audio_name, reference_score, user_score):
 
     df_log.to_csv(LOG_FILE, index=False)
 
+# ----------------------------
+# RESULTS CALCULATION
+# ----------------------------
+def calculate_results():
+    if not os.path.exists(LOG_FILE):
+        return None
+
+    df_log = pd.read_csv(LOG_FILE)
+    user_df = df_log[df_log["user_name"] == st.session_state.user_name]
+
+    if user_df.empty:
+        return None
+
+    # Calculate error metrics
+    user_df["abs_error"] = (user_df["user_score"] - user_df["reference_score"]).abs()
+    avg_error = user_df["abs_error"].mean()
+
+    # Accuracy: exact match
+    accuracy = (user_df["user_score"] == user_df["reference_score"]).mean() * 100
+
+    # Deviation stats
+    max_error = user_df["abs_error"].max()
+    min_error = user_df["abs_error"].min()
+
+    return {
+        "accuracy": accuracy,
+        "avg_error": avg_error,
+        "min_error": min_error,
+        "max_error": max_error,
+        "log": user_df
+    }
+
+# ----------------------------
+# MAIN APP
+# ----------------------------
 def main():
     st.set_page_config(page_title="Criteria Understanding Test", layout="centered")
     initialize_session_state()
@@ -95,22 +130,45 @@ def main():
     # ---------------- Name Input Page ----------------
     if st.session_state.page == "name_input":
         st.title("Criteria Understanding Test")
-        st.text_input("Enter your name:", key="temp_user_name")
 
-        if st.button("Start Test", key="start_test"):
-            if st.session_state.temp_user_name.strip():
-                st.session_state.user_name = st.session_state.temp_user_name
+        def start_test():
+            name = st.session_state.temp_user_name.strip()
+            if name:
+                st.session_state.user_name = name
                 st.session_state.page = "testing"
                 st.session_state.current_audio = pick_random_audio()
-                st.rerun()
+                st.session_state.trigger_rerun = True  # <-- Set flag instead of calling st.rerun()
+
+        st.text_input(
+            "Enter your name:",
+            key="temp_user_name",
+            on_change=start_test
+        )
+
+        # Trigger rerun after callback
+        if st.session_state.get("trigger_rerun", False):
+            st.session_state.trigger_rerun = False
+            st.rerun()
+
 
     # ---------------- Testing Page ----------------
     elif st.session_state.page == "testing":
         done_count = len(st.session_state.done_audios)
         st.markdown(f"### Progress: {done_count}/{TOTAL_TESTS} audios rated")
 
+        # Final Results
         if done_count >= TOTAL_TESTS:
             st.success("All audios have been rated! Thank you for completing the test.")
+            results = calculate_results()
+            if results:
+                st.subheader("Your Results")
+                st.metric("Accuracy", f"{results['accuracy']:.1f}%")
+                st.metric("Average Error", f"{results['avg_error']:.2f}")
+                st.metric("Min Error", f"{results['min_error']:.0f}")
+                st.metric("Max Error", f"{results['max_error']:.0f}")
+
+                # Show detailed log
+                st.dataframe(results["log"])
             return
 
         st.title(f"Hello {st.session_state.user_name}! Rate the following audio.")

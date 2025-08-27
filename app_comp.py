@@ -21,7 +21,8 @@ default_state = {
     'phase1_done': False,
     'baseline_scores': [],
     'experimental_scores': [],
-    'remarks': {}  
+    'remarks': {},
+    'review_completed': False  # <-- new flag
 }
 
 for key, value in default_state.items():
@@ -95,6 +96,14 @@ def phase_0(df):
     st.session_state.baseline_col = st.selectbox("Select Baseline Model:", model_cols)
     exp_options = [m for m in model_cols if m != st.session_state.baseline_col]
     st.session_state.experimental_col = st.selectbox("Select Experimental Model:", exp_options)
+
+    # Show completion message if a review just finished
+    if st.session_state.review_completed:
+        st.success(
+            f"🚀 Model comparison review completed for **{st.session_state.baseline_col}** "
+            f"against **{st.session_state.experimental_col}**"
+        )
+    st.session_state.review_completed = False  # reset flag
 
     if st.button("Confirm Models"):
         st.session_state.valid_rows = [
@@ -181,6 +190,7 @@ def phase_2(df):
     row_idx, transcription, base_audio, exp_audio = st.session_state.valid_rows[row_num]
 
     st.header(f"Phase 2: Blind Preference Test ({row_num+1} of {row_total})")
+    st.markdown(f"**Transcription:** {transcription}")  
 
     pair = [
         ('baseline', st.session_state.baseline_col, base_audio),
@@ -225,14 +235,16 @@ def phase_2(df):
         st.session_state.current_index += 1
 
         if st.session_state.current_index >= row_total:
-            st.success("All evaluations complete! 🎉")
             st.session_state.phase = 0
             st.session_state.phase1_done = False
             st.session_state.current_index = 0
             st.session_state.baseline_scores = []
             st.session_state.experimental_scores = []
             st.session_state.remarks = {}
+            st.session_state.review_completed = True  
         st.rerun()
+
+
 
 # --- Main ---
 def main():
