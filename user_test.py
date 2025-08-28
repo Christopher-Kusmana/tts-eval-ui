@@ -12,7 +12,7 @@ LOG_DIR = "./app_output"
 LOG_FILE = os.path.join(LOG_DIR, "criteria_test_log.csv")
 
 # Expected reference scores for sample_0.wav to sample_9.wav
-REFERENCE_SCORES = {f"sample_{i}.wav": i + 1 for i in range(10)}  # 1–10 scale
+REFERENCE_SCORES = {f"sample_{i}.wav": i for i in range(10)}  # 0-10 scale
 TOTAL_TESTS = len(REFERENCE_SCORES)
 
 # ----------------------------
@@ -101,12 +101,11 @@ def calculate_results():
 
     # Calculate error metrics
     user_df["abs_error"] = (user_df["user_score"] - user_df["reference_score"]).abs()
+
+    # Accuracy: score considered correct if within ±1
+    accuracy = (user_df["abs_error"] <= 1).mean() * 100
+
     avg_error = user_df["abs_error"].mean()
-
-    # Accuracy: exact match
-    accuracy = (user_df["user_score"] == user_df["reference_score"]).mean() * 100
-
-    # Deviation stats
     max_error = user_df["abs_error"].max()
     min_error = user_df["abs_error"].min()
 
@@ -137,7 +136,7 @@ def main():
                 st.session_state.user_name = name
                 st.session_state.page = "testing"
                 st.session_state.current_audio = pick_random_audio()
-                st.session_state.trigger_rerun = True  # <-- Set flag instead of calling st.rerun()
+                st.session_state.trigger_rerun = True
 
         st.text_input(
             "Enter your name:",
@@ -145,29 +144,31 @@ def main():
             on_change=start_test
         )
 
-        # Trigger rerun after callback
         if st.session_state.get("trigger_rerun", False):
             st.session_state.trigger_rerun = False
             st.rerun()
-
 
     # ---------------- Testing Page ----------------
     elif st.session_state.page == "testing":
         done_count = len(st.session_state.done_audios)
         st.markdown(f"### Progress: {done_count}/{TOTAL_TESTS} audios rated")
 
-        # Final Results
         if done_count >= TOTAL_TESTS:
             st.success("All audios have been rated! Thank you for completing the test.")
             results = calculate_results()
             if results:
                 st.subheader("Your Results")
-                st.metric("Accuracy", f"{results['accuracy']:.1f}%")
+                st.metric("Accuracy (±1 Tolerance)", f"{results['accuracy']:.1f}%")
                 st.metric("Average Error", f"{results['avg_error']:.2f}")
                 st.metric("Min Error", f"{results['min_error']:.0f}")
                 st.metric("Max Error", f"{results['max_error']:.0f}")
 
-                # Show detailed log
+                # Pass/Fail
+                if results["accuracy"] >= 80:
+                    st.success("Status: PASSED 🎉")
+                else:
+                    st.error("Status: FAILED ❌ (Accuracy < 80%)")
+
                 st.dataframe(results["log"])
             return
 
@@ -178,13 +179,12 @@ def main():
         if os.path.exists(audio_path):
             st.audio(audio_path, format="audio/wav")
 
-            # Initialize chosen_score
             if "chosen_score" not in st.session_state or st.session_state.chosen_score is None:
                 st.session_state.chosen_score = 5
 
             st.slider(
-                "Rate from 1 (worst) to 10 (best):",
-                min_value=1,
+                "Rate from 0 (worst) to 10 (best):",
+                min_value=0,
                 max_value=10,
                 step=1,
                 key="chosen_score"
