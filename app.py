@@ -168,6 +168,7 @@ def main():
                 st.rerun()
 
     # ---------------- EVALUATION PAGE ----------------
+    # ---------------- EVALUATION PAGE ----------------
     elif st.session_state.page == 'evaluation':
         chosen_model_col = st.session_state.chosen_model
         current_idx = st.session_state.current_index
@@ -181,6 +182,19 @@ def main():
         row_idx, transcription, audio_file_name = st.session_state.valid_rows[current_idx]
         audio_path = os.path.join(AUDIO_DIR, chosen_model_col, audio_file_name)
 
+        # --- Load log if exists ---
+        prev_score, prev_remark = None, ""
+        if os.path.exists(LOG_FILE):
+            df_log = pd.read_csv(LOG_FILE)
+            row = df_log[
+                (df_log['user_name'] == st.session_state.user_name) &
+                (df_log['model'] == chosen_model_col) &
+                (df_log['audio_file'] == audio_file_name)
+            ]
+            if not row.empty:
+                prev_score = int(row.iloc[0]['score'])
+                prev_remark = str(row.iloc[0]['remarks'])
+
         st.title(f"Sample {current_idx + 1} of {total} - Model: {chosen_model_col}")
         st.audio(audio_path, format='audio/wav')
         st.markdown(f"**Transcript:** {transcription}")
@@ -188,18 +202,33 @@ def main():
         score_key = f"{chosen_model_col}_{audio_file_name}_score"
         remark_key = f"{chosen_model_col}_{audio_file_name}_remark"
 
+        # --- Initialize from log or session ---
         if score_key not in st.session_state:
-            st.session_state[score_key] = 0
+            st.session_state[score_key] = prev_score if prev_score is not None else 0
         if remark_key not in st.session_state:
-            st.session_state[remark_key] = ""
+            st.session_state[remark_key] = prev_remark
 
-        score = st.slider("Enter Score (0–100):", min_value=0, max_value=100, step=1, key=score_key)
+        score = st.slider(
+            "Enter Score (0–100):",
+            min_value=0,
+            max_value=100,
+            step=1,
+            key=score_key
+        )
         remark = st.text_input("Remarks (optional):", key=remark_key)
 
-        if st.button("💾 Save & Next"):
-            log_score(chosen_model_col, audio_file_name, transcription, score, remark)
-            st.session_state.current_index += 1
-            st.rerun()
+        col1, col2 = st.columns([1,1])
+        with col1:
+            if st.button("💾 Save & Next"):
+                log_score(chosen_model_col, audio_file_name, transcription, score, remark)
+                st.session_state.current_index += 1
+                st.rerun()
+        with col2:
+            if current_idx > 0:
+                if st.button("⬅ Back"):
+                    st.session_state.current_index -= 1
+                    st.rerun()
+
 
 if __name__ == "__main__":
     main()
