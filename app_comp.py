@@ -130,58 +130,68 @@ def phase_1(df):
     st.header(f"Phase 1: Rate Experimental Version ({row_num+1} of {row_total})")
     st.markdown(f"**Transcription:** {transcription}")
 
-    # Retrieve baseline reference score from dataframe
-    baseline_value_col = f"baseline_{st.session_state.baseline_col}"
-    baseline_value = (
-        df.loc[row_idx, baseline_value_col]
-        if baseline_value_col in df.columns else None
-    )
-
-    # Handle missing or NaN baseline values
-    if baseline_value is None or pd.isna(baseline_value):
-        baseline_value = 0
-    else:
-        baseline_value = int(baseline_value)
+    # --- Load previous log for placeholders ---
+    log_file = "./app_output/comp_eval_log.csv"
+    prev_exp_score = 50
+    prev_remark = ""
+    if os.path.exists(log_file):
+        df_log = pd.read_csv(log_file)
+        row = df_log[
+            (df_log['user_name'] == st.session_state.user_name) &
+            (df_log['experimental_audio_name'] == exp_audio)
+        ]
+        if not row.empty:
+            prev_exp_score = int(row.iloc[0]['experimental_score'])
+            prev_remark = str(row.iloc[0].get('remarks', ""))
 
     # --- Baseline Section (Top) ---
+    baseline_value_col = f"baseline_{st.session_state.baseline_col}"
+    baseline_value = df.loc[row_idx, baseline_value_col] if baseline_value_col in df.columns else 0
+    baseline_value = 0 if pd.isna(baseline_value) else int(baseline_value)
+
     st.subheader("Baseline Audio (Reference)")
     play_audio(st.session_state.baseline_col, base_audio)
-    st.slider(
-        "Baseline Score (Fixed)",
-        min_value=0,
-        max_value=100,
-        value=baseline_value,
-        disabled=True
-    )
+    st.slider("Baseline Score (Fixed)", 0, 100, value=baseline_value, disabled=True)
 
-    # --- Experimental Section (Below) ---
+    # --- Experimental Section ---
     st.subheader("Experimental Audio")
     play_audio(st.session_state.experimental_col, exp_audio)
-    experimental_score = st.slider("Experimental Score:", 0, 100, value=50)
+    exp_score_key = f"exp_score_{row_num}"
+    remark_key = f"remark_{row_num}"
 
-    # --- Remarks ---
-    remarks = st.text_area("Additional Remarks (optional):", key=f"remarks_{row_num}")
+    if exp_score_key not in st.session_state:
+        st.session_state[exp_score_key] = prev_exp_score
+    if remark_key not in st.session_state:
+        st.session_state[remark_key] = prev_remark
+
+    experimental_score = st.slider("Experimental Score:", 0, 100, value=st.session_state[exp_score_key], key=exp_score_key)
+    remarks = st.text_area("Additional Remarks (optional):", key=remark_key)
     st.session_state.remarks[row_num] = remarks
 
-    # --- Submission ---
-    if st.button("Submit Score"):
-        st.session_state.baseline_scores.append(baseline_value)
-        st.session_state.experimental_scores.append(experimental_score)
-        st.session_state.current_index += 1
+    col1, col2 = st.columns([1,1])
+    with col1:
+        if row_num > 0:
+            if st.button("⬅ Back"):
+                st.session_state.current_index -= 1
+                st.rerun()
+    with col2:
+        if st.button("Submit Score"):
+            st.session_state.baseline_scores.append(baseline_value)
+            st.session_state.experimental_scores.append(experimental_score)
+            st.session_state.current_index += 1
 
-        if st.session_state.current_index >= row_total:
-            combined = list(zip(
-                st.session_state.valid_rows,
-                st.session_state.baseline_scores,
-                st.session_state.experimental_scores
-            ))
-            random.shuffle(combined)
-            st.session_state.valid_rows, st.session_state.baseline_scores, st.session_state.experimental_scores = zip(*combined)
-            st.session_state.current_index = 0
-            st.session_state.phase1_done = True
-            st.session_state.phase = 2
-
-        st.rerun()
+            if st.session_state.current_index >= row_total:
+                combined = list(zip(
+                    st.session_state.valid_rows,
+                    st.session_state.baseline_scores,
+                    st.session_state.experimental_scores
+                ))
+                random.shuffle(combined)
+                st.session_state.valid_rows, st.session_state.baseline_scores, st.session_state.experimental_scores = zip(*combined)
+                st.session_state.current_index = 0
+                st.session_state.phase1_done = True
+                st.session_state.phase = 2
+            st.rerun()
 
 # --- Phase 2: Blind A/B ---
 def phase_2(df):
@@ -206,44 +216,54 @@ def phase_2(df):
         st.subheader("Audio 2")
         play_audio(pair[1][1], pair[1][2])
 
-    choice = st.radio("Which do you prefer?", ["Audio 1", "Audio 2", "Tie"])
+    choice_key = f"choice_{row_num}"
+    if choice_key not in st.session_state:
+        st.session_state[choice_key] = None
 
-    if st.button("Submit Preference"):
-        if choice == "Tie":
-            preferred = "tie"
-            consistent = None
-        else:
-            preferred = pair[0][0] if choice == "Audio 1" else pair[1][0]
-            consistent = preferred == 'experimental'
+    choice = st.radio("Which do you prefer?", ["Audio 1", "Audio 2", "Tie"], index=["Audio 1","Audio 2","Tie"].index(st.session_state[choice_key]) if st.session_state[choice_key] else 0)
+    st.session_state[choice_key] = choice
 
-        remarks = st.session_state.remarks.get(row_num, "")
+    col1, col2 = st.columns([1,1])
+    with col1:
+        if row_num > 0:
+            if st.button("⬅ Back"):
+                st.session_state.current_index -= 1
+                st.rerun()
+    with col2:
+        if st.button("Submit Preference"):
+            if choice == "Tie":
+                preferred = "tie"
+                consistent = None
+            else:
+                preferred = pair[0][0] if choice == "Audio 1" else pair[1][0]
+                consistent = preferred == 'experimental'
 
-        log_entry = {
-            'user_name': st.session_state.user_name,
-            'baseline_model': st.session_state.baseline_col,
-            'experimental_model': st.session_state.experimental_col,
-            'baseline_audio_name': base_audio,
-            'experimental_audio_name': exp_audio,
-            'baseline_score': st.session_state.baseline_scores[row_num],
-            'experimental_score': st.session_state.experimental_scores[row_num],
-            'preferred': preferred,
-            'consistent': consistent,
-            'remarks': remarks
-        }
+            remarks = st.session_state.remarks.get(row_num, "")
+            log_entry = {
+                'user_name': st.session_state.user_name,
+                'baseline_model': st.session_state.baseline_col,
+                'experimental_model': st.session_state.experimental_col,
+                'baseline_audio_name': base_audio,
+                'experimental_audio_name': exp_audio,
+                'baseline_score': st.session_state.baseline_scores[row_num],
+                'experimental_score': st.session_state.experimental_scores[row_num],
+                'preferred': preferred,
+                'consistent': consistent,
+                'remarks': remarks
+            }
 
-        save_log(log_entry)
-        st.session_state.current_index += 1
+            save_log(log_entry)
+            st.session_state.current_index += 1
 
-        if st.session_state.current_index >= row_total:
-            st.session_state.phase = 0
-            st.session_state.phase1_done = False
-            st.session_state.current_index = 0
-            st.session_state.baseline_scores = []
-            st.session_state.experimental_scores = []
-            st.session_state.remarks = {}
-            st.session_state.review_completed = True  
-        st.rerun()
-
+            if st.session_state.current_index >= row_total:
+                st.session_state.phase = 0
+                st.session_state.phase1_done = False
+                st.session_state.current_index = 0
+                st.session_state.baseline_scores = []
+                st.session_state.experimental_scores = []
+                st.session_state.remarks = {}
+                st.session_state.review_completed = True  
+            st.rerun()
 
 
 # --- Main ---
