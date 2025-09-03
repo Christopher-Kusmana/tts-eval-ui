@@ -12,7 +12,7 @@ LOG_DIR = "./app_output"
 LOG_FILE = os.path.join(LOG_DIR, "criteria_test_log.csv")
 
 # Expected reference scores for sample_0.wav to sample_9.wav
-REFERENCE_SCORES = {f"sample_{i}.wav": i + 1 for i in range(10)}  # 1–10 scale
+REFERENCE_SCORES = {f"sample_{i}.wav": i for i in range(10)}  # 0-10 scale
 TOTAL_TESTS = len(REFERENCE_SCORES)
 
 # ----------------------------
@@ -86,6 +86,40 @@ def log_user_score(audio_name, reference_score, user_score):
 
     df_log.to_csv(LOG_FILE, index=False)
 
+# ----------------------------
+# RESULTS CALCULATION
+# ----------------------------
+def calculate_results():
+    if not os.path.exists(LOG_FILE):
+        return None
+
+    df_log = pd.read_csv(LOG_FILE)
+    user_df = df_log[df_log["user_name"] == st.session_state.user_name]
+
+    if user_df.empty:
+        return None
+
+    # Calculate error metrics
+    user_df["abs_error"] = (user_df["user_score"] - user_df["reference_score"]).abs()
+
+    # Accuracy: score considered correct if within ±1
+    accuracy = (user_df["abs_error"] <= 1).mean() * 100
+
+    avg_error = user_df["abs_error"].mean()
+    max_error = user_df["abs_error"].max()
+    min_error = user_df["abs_error"].min()
+
+    return {
+        "accuracy": accuracy,
+        "avg_error": avg_error,
+        "min_error": min_error,
+        "max_error": max_error,
+        "log": user_df
+    }
+
+# ----------------------------
+# MAIN APP
+# ----------------------------
 def main():
     st.set_page_config(page_title="Criteria Understanding Test", layout="centered")
     initialize_session_state()
@@ -95,14 +129,24 @@ def main():
     # ---------------- Name Input Page ----------------
     if st.session_state.page == "name_input":
         st.title("Criteria Understanding Test")
-        st.text_input("Enter your name:", key="temp_user_name")
 
-        if st.button("Start Test", key="start_test"):
-            if st.session_state.temp_user_name.strip():
-                st.session_state.user_name = st.session_state.temp_user_name
+        def start_test():
+            name = st.session_state.temp_user_name.strip()
+            if name:
+                st.session_state.user_name = name
                 st.session_state.page = "testing"
                 st.session_state.current_audio = pick_random_audio()
-                st.rerun()
+                st.session_state.trigger_rerun = True
+
+        st.text_input(
+            "Enter your name:",
+            key="temp_user_name",
+            on_change=start_test
+        )
+
+        if st.session_state.get("trigger_rerun", False):
+            st.session_state.trigger_rerun = False
+            st.rerun()
 
     # ---------------- Testing Page ----------------
     elif st.session_state.page == "testing":
@@ -111,6 +155,21 @@ def main():
 
         if done_count >= TOTAL_TESTS:
             st.success("All audios have been rated! Thank you for completing the test.")
+            results = calculate_results()
+            if results:
+                st.subheader("Your Results")
+                st.metric("Accuracy (±1 Tolerance)", f"{results['accuracy']:.1f}%")
+                st.metric("Average Error", f"{results['avg_error']:.2f}")
+                st.metric("Min Error", f"{results['min_error']:.0f}")
+                st.metric("Max Error", f"{results['max_error']:.0f}")
+
+                # Pass/Fail
+                if results["accuracy"] >= 80:
+                    st.success("Status: PASSED 🎉")
+                else:
+                    st.error("Status: FAILED ❌ (Accuracy < 80%)")
+
+                st.dataframe(results["log"])
             return
 
         st.title(f"Hello {st.session_state.user_name}! Rate the following audio.")
@@ -120,13 +179,12 @@ def main():
         if os.path.exists(audio_path):
             st.audio(audio_path, format="audio/wav")
 
-            # Initialize chosen_score
             if "chosen_score" not in st.session_state or st.session_state.chosen_score is None:
                 st.session_state.chosen_score = 5
 
             st.slider(
-                "Rate from 1 (worst) to 10 (best):",
-                min_value=1,
+                "Rate from 0 (worst) to 10 (best):",
+                min_value=0,
                 max_value=10,
                 step=1,
                 key="chosen_score"
