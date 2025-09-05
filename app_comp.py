@@ -100,8 +100,7 @@ def phase_0(df):
     # Show completion message if a review just finished
     if st.session_state.review_completed:
         st.success(
-            f"🚀 Model comparison review completed for **{st.session_state.baseline_col}** "
-            f"against **{st.session_state.experimental_col}**"
+            f"🚀 Model comparison review completed"
         )
     st.session_state.review_completed = False  # reset flag
 
@@ -209,12 +208,47 @@ def phase_2(df):
     choice = st.radio("Which do you prefer?", ["Audio 1", "Audio 2", "Tie"])
 
     if st.button("Submit Preference"):
+        # Map choice to preferred label (baseline/experimental/tie)
         if choice == "Tie":
             preferred = "tie"
-            consistent = None
         else:
             preferred = pair[0][0] if choice == "Audio 1" else pair[1][0]
-            consistent = preferred == 'experimental'
+
+        # Try to read the numeric baseline/experimental scores recorded in phase 1
+        b_score = None
+        e_score = None
+        try:
+            # baseline_scores/experimental_scores may be lists or tuples
+            b_score = st.session_state.baseline_scores[row_num]
+            e_score = st.session_state.experimental_scores[row_num]
+            # coerce to float/int if possible
+            if b_score is not None:
+                b_score = float(b_score)
+            if e_score is not None:
+                e_score = float(e_score)
+        except Exception:
+            b_score = None
+            e_score = None
+
+        # Determine consistency according to the numeric scores and user preference
+        if preferred == "tie":
+            # Tie is consistent only when the two scores are equal and known
+            if (b_score is not None) and (e_score is not None):
+                consistent = True if (b_score == e_score) else False
+            else:
+                consistent = None
+        else:
+            # Preference is baseline or experimental
+            if (b_score is None) or (e_score is None):
+                consistent = None
+            else:
+                if b_score > e_score and preferred == 'baseline':
+                    consistent = True
+                elif e_score > b_score and preferred == 'experimental':
+                    consistent = True
+                else:
+                    # includes case where b_score == e_score but user chose a side
+                    consistent = False
 
         remarks = st.session_state.remarks.get(row_num, "")
 
@@ -224,8 +258,8 @@ def phase_2(df):
             'experimental_model': st.session_state.experimental_col,
             'baseline_audio_name': base_audio,
             'experimental_audio_name': exp_audio,
-            'baseline_score': st.session_state.baseline_scores[row_num],
-            'experimental_score': st.session_state.experimental_scores[row_num],
+            'baseline_score': st.session_state.baseline_scores[row_num] if len(st.session_state.baseline_scores) > row_num else None,
+            'experimental_score': st.session_state.experimental_scores[row_num] if len(st.session_state.experimental_scores) > row_num else None,
             'preferred': preferred,
             'consistent': consistent,
             'remarks': remarks
@@ -235,16 +269,15 @@ def phase_2(df):
         st.session_state.current_index += 1
 
         if st.session_state.current_index >= row_total:
+            st.success("All evaluations complete! 🎉")
             st.session_state.phase = 0
             st.session_state.phase1_done = False
             st.session_state.current_index = 0
             st.session_state.baseline_scores = []
             st.session_state.experimental_scores = []
             st.session_state.remarks = {}
-            st.session_state.review_completed = True  
+            st.session_state.review_completed = True
         st.rerun()
-
-
 
 # --- Main ---
 def main():
