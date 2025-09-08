@@ -2,3 +2,4 @@
 app_input/audios/*
 !app_input/audios/test/
 !app_input/audios/test/**
+app_output/
