@@ -1,0 +1,10 @@
+user_name,audio_name,reference_score,user_score,timestamp
+C,sample_4.wav,4,5,2025-09-08T10:04:03.944193
+C,sample_2.wav,2,5,2025-09-08T10:04:39.384862
+C,sample_5.wav,5,5,2025-09-08T10:04:59.210070
+C,sample_9.wav,9,5,2025-09-08T10:05:42.922651
+C,sample_0.wav,0,5,2025-09-08T10:06:00.461740
+C,sample_8.wav,8,5,2025-09-08T10:06:10.573023
+C,sample_1.wav,1,5,2025-09-08T10:07:40.492170
+C,sample_3.wav,3,5,2025-09-08T10:09:27.721598
+C,sample_7.wav,7,5,2025-09-08T10:09:56.802366

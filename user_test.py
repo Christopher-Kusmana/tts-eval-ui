@@ -10,6 +10,21 @@ import datetime
 TEST_AUDIO_DIR = "./app_input/audios/test"
 LOG_DIR = "./app_output"
 LOG_FILE = os.path.join(LOG_DIR, "criteria_test_log.csv")
+# ----------------------------
+# TRANSCRIPTIONS
+# ----------------------------
+TRANSCRIPTIONS = {
+    "sample_0.wav": "Setuju. Oiya, setelah turun stasiun, kita mampir ngopi yuk. Gue butuh kafein ekstra buat pulih. <mmm>",
+    "sample_1.wav": "Oh baik, terima kasih telah melakukan pencairan di aplikasi kami. Jika nanti ada pertanyaan, silakan menghubungi Customer Service kami di 1500 729. Selamat beraktivitas kembali.',",
+    "sample_2.wav": "Mohon maaf sepertinya ada gangguan sinyal, kami hanya ingin menginformasikan karena riwayat pembayaran kakak yang cukup baik di GoPay Pinjam, kakak bisa mendapatkan potongan biaya untuk penarikan selanjutnya.",
+    "sample_3.wav": "Pinjaman kamu dua puluh ribu akan jatuh tempo dalam tiga hari, jangan lupa mengingatkan saya untuk melunasi ya",
+    "sample_4.wav": "Dengan menggunakan QRIS, pembayaran menjadi lebih mudah dan praktis, baik untuk transaksi kecil maupun besar",
+    "sample_5.wav": "Baik, kalau boleh tahu, apa ada alasan khusus kenapa kakak belum tertarik untuk melanjutkan ke proses pencairan?",
+    "sample_6.wav": "Oh baik, mungkin bisa dicoba dulu kak untuk mencairkan dananya, mulai dari dua ratus ribu saja. Setelah ada riwayat transaksi, kedepannya akun Gopay Pinjam kakak bisa kami upgrade untuk dapat harga lebih murah, limit lebih tinggi dan tenor lebih panjang.",
+    "sample_7.wav": "<mmm> mengenai masalah ini, pastikan kakak sudah memperbarui aplikasinya ke versi terbaru.",
+    "sample_8.wav": "Iya, padahal kalau santai pasti lebih nyaman. Tapi ya gitu, siapa cepat dia dapat spot deket pegangan.",
+    "sample_9.wav": "Mohon maaf sepertinya ada gangguan sinyal, kami hanya ingin menginformasikan karena riwayat pembayaran kakak yang cukup baik di GoPay Pinjam, kakak bisa mendapatkan potongan biaya untuk penarikan selanjutnya.",
+}
 
 # Expected reference scores for sample_0.wav to sample_9.wav
 REFERENCE_SCORES = {f"sample_{i}.wav": i for i in range(10)}  # 0-10 scale
@@ -178,6 +193,9 @@ def main():
 
         if os.path.exists(audio_path):
             st.audio(audio_path, format="audio/wav")
+
+            if audio_name in TRANSCRIPTIONS:
+                st.markdown(f"**Transcription:** {TRANSCRIPTIONS[audio_name]}")
 
             if "chosen_score" not in st.session_state or st.session_state.chosen_score is None:
                 st.session_state.chosen_score = 5
